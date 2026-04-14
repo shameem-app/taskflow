@@ -49,10 +49,16 @@ header { display:flex; align-items:center; justify-content:space-between; paddin
 .theme-knob { width:18px; height:18px; border-radius:50%; background:linear-gradient(135deg,var(--accent),#5e4fd6); position:absolute; left:3px; display:flex; align-items:center; justify-content:center; font-size:10px; transition:left 0.35s cubic-bezier(0.34,1.56,0.64,1),background 0.4s; box-shadow:0 2px 8px rgba(0,0,0,0.25); }
 :root.day .theme-knob { left:calc(100% - 21px); background:linear-gradient(135deg,#f7c16a,#f7a06a); }
 
+/* LOADING OVERLAY */
+#loading-overlay { position:fixed; inset:0; z-index:99999; background:var(--bg); display:flex; align-items:center; justify-content:center; transition:opacity 0.3s; }
+#loading-overlay.hidden { opacity:0; pointer-events:none; }
+.loading-spinner { width:40px; height:40px; border-radius:50%; border:3px solid var(--muted2); border-top-color:var(--accent); animation:spin 0.7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
 /* AUTH SCREEN */
-#auth-view { position:fixed; inset:0; z-index:9999; background:var(--bg); display:flex; align-items:center; justify-content:center; }
+#auth-view { position:fixed; inset:0; z-index:9999; background:var(--bg); display:none; align-items:center; justify-content:center; }
 .auth-box { width:400px; background:var(--card); border:1px solid var(--card-border); border-radius:22px; padding:40px 36px; box-shadow:0 32px 80px rgba(0,0,0,0.5); position:relative; z-index:10000; }
-.auth-tab, .auth-submit, .auth-input, .auth-google { pointer-events:all; position:relative; z-index:10001; }
+.auth-tab, .auth-submit, .auth-input { pointer-events:all; position:relative; z-index:10001; }
 .auth-logo { display:flex; flex-direction:column; align-items:center; gap:10px; margin-bottom:28px; text-align:center; }
 .auth-logo span { font-family:'Syne',sans-serif; font-weight:800; font-size:1.5rem; letter-spacing:-0.03em; background:linear-gradient(135deg,var(--accent),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
 .auth-tagline { font-size:0.82rem; color:var(--muted); margin:0; }
@@ -261,6 +267,7 @@ header { display:flex; align-items:center; justify-content:space-between; paddin
 </head>
 <body>
 <div id="pat-overlay"></div>
+<div id="loading-overlay"><div class="loading-spinner"></div></div>
 
 <!-- HEADER -->
 <header>
@@ -980,25 +987,29 @@ async function confirmRename() {
 
 // ── VIEW SWITCHING ──
 function showHomeView() {
-  document.getElementById('auth-view').style.display   = 'none';
-  document.getElementById('home-view').style.display   = 'block';
-  document.getElementById('board-view').style.display  = 'none';
+  document.getElementById('auth-view').style.display  = 'none';
+  document.getElementById('home-view').style.display  = 'block';
+  document.getElementById('board-view').style.display = 'none';
   ['back-btn','archive-btn','global-stats','layout-btn'].forEach(id => document.getElementById(id).style.display = 'none');
-  document.getElementById('user-chip').style.display   = 'flex';
-  archiveViewOpen = false; document.title = 'Taskflow';
+  document.getElementById('user-chip').style.display = 'flex';
+  archiveViewOpen = false;
+  document.title = 'Taskflow';
 }
 function showBoardView(name) {
-  document.getElementById('auth-view').style.display   = 'none';
-  document.getElementById('home-view').style.display   = 'none';
-  document.getElementById('board-view').style.display  = 'block';
+  document.getElementById('auth-view').style.display  = 'none';
+  document.getElementById('home-view').style.display  = 'none';
+  document.getElementById('board-view').style.display = 'block';
   ['back-btn','archive-btn','global-stats','layout-btn'].forEach(id => { document.getElementById(id).style.display = 'flex'; });
-  document.getElementById('user-chip').style.display   = 'flex';
+  document.getElementById('user-chip').style.display = 'flex';
   const abtn = document.getElementById('archive-btn');
-  abtn.style.background = 'linear-gradient(135deg,#5a607a,#3a3f55)'; abtn.style.boxShadow = '0 4px 18px rgba(90,96,122,0.3)'; abtn.style.color = 'white';
+  abtn.style.background = 'linear-gradient(135deg,#5a607a,#3a3f55)';
+  abtn.style.boxShadow  = '0 4px 18px rgba(90,96,122,0.3)';
+  abtn.style.color      = 'white';
   document.getElementById('archive-btn-label').textContent = 'Archive';
   document.getElementById('board-area-main').style.display = 'block';
   document.getElementById('archive-view').style.display    = 'none';
-  archiveViewOpen = false; document.title = `${name} — Taskflow`;
+  archiveViewOpen = false;
+  document.title = `${name} — Taskflow`;
 }
 function goHome() { currentProjectId = null; boards = []; archive = []; localStorage.removeItem(CURRENT_KEY); showHomeView(); renderHome(); }
 
@@ -1089,23 +1100,46 @@ function toggleTheme() { const d=R.classList.toggle('day'); document.getElementB
 
 // ── INIT ──
 (async function(){
-  if (localStorage.getItem('taskflow-theme')==='day') { R.classList.add('day'); setTimeout(()=>{ const k=document.getElementById('theme-knob'); if(k) k.textContent='☀️'; },0); }
+  if (localStorage.getItem('taskflow-theme')==='day') {
+    R.classList.add('day');
+    setTimeout(() => { const k=document.getElementById('theme-knob'); if(k) k.textContent='☀️'; }, 0);
+  }
+
+  // onAuthStateChanged fires once immediately on page load with the persisted session.
+  // We wait for that first call before showing any UI — this eliminates the flash.
+  let firstCall = true;
 
   auth.onAuthStateChanged(async (user) => {
     if (user) {
+      const lastUid = localStorage.getItem('taskflow-uid');
+
+      // Only wipe cache when a different account logs in
+      if (lastUid && lastUid !== user.uid) {
+        localStorage.removeItem(PROJECTS_KEY);
+        localStorage.removeItem(CURRENT_KEY);
+      }
+      localStorage.setItem('taskflow-uid', user.uid);
+
       currentUser = user;
-      document.getElementById('user-email').textContent = user.email || user.displayName || '';
-      document.getElementById('auth-view').style.display = 'none';
-      // Clear any stale cache from a previous account before syncing
-      localStorage.removeItem(PROJECTS_KEY);
-      localStorage.removeItem(CURRENT_KEY);
+      document.getElementById('user-email').textContent = user.email || '';
+
       await syncFromFirestore();
-      showHomeView(); renderHome();
+      showHomeView();
+      renderHome();
     } else {
       currentUser = null;
+      localStorage.removeItem('taskflow-uid');
       document.getElementById('auth-view').style.display = 'flex';
       document.getElementById('home-view').style.display  = 'none';
       document.getElementById('board-view').style.display = 'none';
+    }
+
+    // Hide the loading overlay after the first auth resolution
+    if (firstCall) {
+      firstCall = false;
+      const overlay = document.getElementById('loading-overlay');
+      overlay.classList.add('hidden');
+      setTimeout(() => overlay.remove(), 350);
     }
   });
 })();
