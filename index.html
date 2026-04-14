@@ -916,10 +916,14 @@ async function syncFromFirestore() {
   if (!currentUser) return;
   try {
     const snap = await db.collection('projects').where('userId','==',currentUser.uid).get();
-    if (!snap.empty) {
-      const projects = snap.docs.map(doc => ({ ...doc.data().data, id: doc.id, name: doc.data().name, savedAt: doc.data().savedAt || Date.now() }));
-      setProjects(projects);
-    }
+    // Always overwrite cache — empty snap means this account has no projects
+    const projects = snap.empty ? [] : snap.docs.map(doc => ({
+      ...doc.data().data,
+      id: doc.id,
+      name: doc.data().name,
+      savedAt: doc.data().savedAt || Date.now()
+    }));
+    setProjects(projects);
   } catch(e) { console.error('Sync error:', e); }
 }
 
@@ -1077,6 +1081,9 @@ function toggleTheme() { const d=R.classList.toggle('day'); document.getElementB
       currentUser = user;
       document.getElementById('user-email').textContent = user.email || user.displayName || '';
       document.getElementById('auth-view').style.display = 'none';
+      // Clear any stale cache from a previous account before syncing
+      localStorage.removeItem(PROJECTS_KEY);
+      localStorage.removeItem(CURRENT_KEY);
       await syncFromFirestore();
       if (!getProjects().length) {
         const id=genId(), demoBoards=[];
