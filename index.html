@@ -503,12 +503,12 @@ header { display:flex; align-items:center; justify-content:space-between; paddin
       <div class="drawer-panel" id="dpanel-pattern">
         <div class="setting-label" style="margin-bottom:4px">Background Pattern</div>
         <div class="pattern-grid" id="pattern-grid">
-          <div class="pattern-card selected" onclick="applyPattern('none',this)"><div class="pat-preview" style="background:var(--bg)"></div><div class="pat-name">None</div></div>
-          <div class="pattern-card" onclick="applyPattern('dots',this)"><div class="pat-preview" style="background-image:radial-gradient(circle,#5a607a 1px,transparent 1px);background-size:14px 14px;background-color:var(--card)"></div><div class="pat-name">Dots</div></div>
-          <div class="pattern-card" onclick="applyPattern('grid',this)"><div class="pat-preview" style="background-image:linear-gradient(#3a3f55 1px,transparent 1px),linear-gradient(90deg,#3a3f55 1px,transparent 1px);background-size:18px 18px;background-color:var(--card)"></div><div class="pat-name">Grid</div></div>
-          <div class="pattern-card" onclick="applyPattern('diagonal',this)"><div class="pat-preview" style="background-image:repeating-linear-gradient(45deg,#3a3f55 0,#3a3f55 1px,transparent 0,transparent 50%);background-size:10px 10px;background-color:var(--card)"></div><div class="pat-name">Diagonal</div></div>
-          <div class="pattern-card" onclick="applyPattern('waves',this)"><div class="pat-preview" style="background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='10'%3E%3Cpath d='M0 5 Q10 0 20 5 Q30 10 40 5' fill='none' stroke='%235a607a' stroke-width='1'/%3E%3C/svg%3E&quot;);background-color:var(--card)"></div><div class="pat-name">Waves</div></div>
-          <div class="pattern-card" onclick="applyPattern('cross',this)"><div class="pat-preview" style="background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Cpath d='M6 2v8M2 6h8' stroke='%235a607a' stroke-width='0.8'/%3E%3C/svg%3E&quot;);background-color:var(--card)"></div><div class="pat-name">Cross</div></div>
+          <div class="pattern-card selected" data-pat="none" onclick="applyPattern('none',this)"><div class="pat-preview" style="background:var(--bg)"></div><div class="pat-name">None</div></div>
+          <div class="pattern-card" data-pat="dots" onclick="applyPattern('dots',this)"><div class="pat-preview" style="background-image:radial-gradient(circle,#5a607a 1px,transparent 1px);background-size:14px 14px;background-color:var(--card)"></div><div class="pat-name">Dots</div></div>
+          <div class="pattern-card" data-pat="grid" onclick="applyPattern('grid',this)"><div class="pat-preview" style="background-image:linear-gradient(#3a3f55 1px,transparent 1px),linear-gradient(90deg,#3a3f55 1px,transparent 1px);background-size:18px 18px;background-color:var(--card)"></div><div class="pat-name">Grid</div></div>
+          <div class="pattern-card" data-pat="diagonal" onclick="applyPattern('diagonal',this)"><div class="pat-preview" style="background-image:repeating-linear-gradient(45deg,#3a3f55 0,#3a3f55 1px,transparent 0,transparent 50%);background-size:10px 10px;background-color:var(--card)"></div><div class="pat-name">Diagonal</div></div>
+          <div class="pattern-card" data-pat="waves" onclick="applyPattern('waves',this)"><div class="pat-preview" style="background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='10'%3E%3Cpath d='M0 5 Q10 0 20 5 Q30 10 40 5' fill='none' stroke='%235a607a' stroke-width='1'/%3E%3C/svg%3E&quot;);background-color:var(--card)"></div><div class="pat-name">Waves</div></div>
+          <div class="pattern-card" data-pat="cross" onclick="applyPattern('cross',this)"><div class="pat-preview" style="background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Cpath d='M6 2v8M2 6h8' stroke='%235a607a' stroke-width='0.8'/%3E%3C/svg%3E&quot;);background-color:var(--card)"></div><div class="pat-name">Cross</div></div>
         </div>
       </div>
 
@@ -928,7 +928,8 @@ async function syncFromFirestore() {
       ...doc.data().data,
       id: doc.id,
       name: doc.data().name,
-      savedAt: doc.data().savedAt || Date.now()
+      savedAt: doc.data().savedAt || Date.now(),
+      layout: doc.data().data?.layout || null
     }));
     setProjects(projects);
   } catch(e) { console.error('Sync error:', e); }
@@ -937,7 +938,7 @@ async function syncFromFirestore() {
 async function saveProject() {
   if (!currentProjectId) return;
   const projects = getProjects(), idx = projects.findIndex(p => p.id === currentProjectId);
-  const data = { id: currentProjectId, name: projects[idx]?.name || 'Untitled', boards, archive, savedAt: Date.now() };
+  const data = { id: currentProjectId, name: projects[idx]?.name || 'Untitled', boards, archive, layout: getLayoutState(), savedAt: Date.now() };
   if (idx >= 0) projects[idx] = data; else projects.push(data);
   setProjects(projects);
   if (currentUser) {
@@ -945,7 +946,7 @@ async function saveProject() {
       userId: currentUser.uid,
       name: data.name,
       savedAt: data.savedAt,
-      data: { boards: data.boards, archive: data.archive }
+      data: { boards: data.boards, archive: data.archive, layout: data.layout }
     });
   }
 }
@@ -955,7 +956,9 @@ async function openProject(id) {
   if (!p) return;
   currentProjectId = id; boards = p.boards || []; archive = p.archive || [];
   localStorage.setItem(CURRENT_KEY, id);
-  showBoardView(p.name); render();
+  showBoardView(p.name);
+  applyLayoutState(p.layout || null);
+  render();
 }
 
 async function deleteProject(id, e) {
@@ -1072,27 +1075,78 @@ function toggleDrawer() { const o=document.getElementById('layout-drawer').class
 function closeDrawer() { document.getElementById('layout-drawer').classList.remove('open'); document.getElementById('drawer-overlay').classList.remove('open'); document.getElementById('layout-btn').classList.remove('open'); }
 function switchTab(id,btn) { document.querySelectorAll('.drawer-tab').forEach(t=>t.classList.remove('active')); document.querySelectorAll('.drawer-panel').forEach(p=>p.classList.remove('active')); btn.classList.add('active'); document.getElementById('dpanel-'+id).classList.add('active'); }
 
+// ── LAYOUT SETTINGS ──
+// Collect all current layout values into a plain object
+function getLayoutState() {
+  return {
+    cardH:    document.getElementById('sl-min-h').value,
+    radius:   document.getElementById('sl-radius').value,
+    taskH:    document.getElementById('sl-task-h').value,
+    cols:     document.getElementById('sl-cols').value,
+    gap:      document.getElementById('sl-gap').value,
+    font:     getComputedStyle(R).getPropertyValue('--ui-font').trim(),
+    taskFs:   document.getElementById('sl-task-size').value,
+    projFs:   document.getElementById('sl-project-size').value,
+    pattern:  document.getElementById('pat-overlay').dataset.pattern || 'none'
+  };
+}
+
+// Apply a saved layout object back to the UI and CSS
+function applyLayoutState(l) {
+  if (!l) return;
+  if (l.cardH)   { applyCardHeight(l.cardH);  document.getElementById('sl-min-h').value = l.cardH; }
+  if (l.radius)  { applyRadius(l.radius);      document.getElementById('sl-radius').value = l.radius; }
+  if (l.taskH)   {
+    if (l.taskH === 'auto') { R.style.setProperty('--task-item-h','auto'); document.getElementById('sl-task-h').value=38; document.getElementById('val-task-h').textContent='Auto'; }
+    else { applyTaskHeight(l.taskH); document.getElementById('sl-task-h').value = l.taskH; }
+  }
+  if (l.cols)    { applyGridCols(l.cols);      document.getElementById('sl-cols').value = l.cols; }
+  if (l.gap)     { applyGap(l.gap);            document.getElementById('sl-gap').value = l.gap; }
+  if (l.font) {
+    const fontName = l.font.replace(/'/g,'').split(',')[0].trim();
+    R.style.setProperty('--ui-font', l.font);
+    document.querySelectorAll('#font-grid .font-option').forEach(o => {
+      o.classList.toggle('selected', o.querySelector('.font-name')?.textContent === fontName);
+    });
+  }
+  if (l.taskFs)  { applyFontSize('task',    l.taskFs);  document.getElementById('sl-task-size').value    = l.taskFs; }
+  if (l.projFs)  { applyFontSize('project', l.projFs);  document.getElementById('sl-project-size').value = l.projFs; }
+  if (l.pattern) {
+    const card = document.querySelector(`#pattern-grid .pattern-card[data-pat="${l.pattern}"]`);
+    applyPattern(l.pattern, card || document.querySelector('#pattern-grid .pattern-card'));
+  }
+}
+
 // ── LAYOUT CONTROLS ──
-function applyCardHeight(v) { R.style.setProperty('--card-min-h',v+'px'); document.getElementById('val-min-h').textContent=v+'px'; }
-function applyRadius(v)     { R.style.setProperty('--radius',v+'px'); document.getElementById('val-radius').textContent=v+'px'; }
-function applyTaskHeight(v) { R.style.setProperty('--task-item-h',v+'px'); document.getElementById('val-task-h').textContent=v+'px'; }
-function applyGridCols(v)   { document.getElementById('grid').style.gridTemplateColumns=`repeat(${v},1fr)`; document.getElementById('val-cols').textContent=v; }
-function applyGap(v)        { R.style.setProperty('--grid-gap',v+'px'); document.getElementById('val-gap').textContent=v+'px'; }
-function applyFont(f,el)    { R.style.setProperty('--ui-font',`'${f}',sans-serif`); document.querySelectorAll('#font-grid .font-option').forEach(o=>o.classList.remove('selected')); el.classList.add('selected'); }
-function applyFontSize(t,v) { R.style.setProperty(t==='task'?'--task-fs':'--project-fs',v+'px'); document.getElementById(t==='task'?'val-task-size':'val-project-size').textContent=v+'px'; }
-function resetCard() { applyCardHeight(390); R.style.setProperty('--task-item-h','auto'); document.getElementById('sl-min-h').value=390; applyRadius(10); document.getElementById('sl-radius').value=10; document.getElementById('sl-task-h').value=38; document.getElementById('val-task-h').textContent='Auto'; }
-function resetGrid() { applyGridCols(5); document.getElementById('sl-cols').value=5; applyGap(30); document.getElementById('sl-gap').value=30; document.getElementById('grid').style.gridTemplateColumns='repeat(5,1fr)'; }
-function resetType() { R.style.setProperty('--ui-font',"'DM Sans',sans-serif"); R.style.setProperty('--task-fs','0.82rem'); R.style.setProperty('--project-fs','0.95rem'); document.getElementById('sl-task-size').value=13; document.getElementById('val-task-size').textContent='13px'; document.getElementById('sl-project-size').value=15; document.getElementById('val-project-size').textContent='15px'; document.querySelectorAll('#font-grid .font-option').forEach((o,i)=>o.classList.toggle('selected',i===0)); }
+function applyCardHeight(v) { R.style.setProperty('--card-min-h',v+'px'); document.getElementById('val-min-h').textContent=v+'px'; saveLayoutDebounced(); }
+function applyRadius(v)     { R.style.setProperty('--radius',v+'px'); document.getElementById('val-radius').textContent=v+'px'; saveLayoutDebounced(); }
+function applyTaskHeight(v) { R.style.setProperty('--task-item-h',v+'px'); document.getElementById('val-task-h').textContent=v+'px'; saveLayoutDebounced(); }
+function applyGridCols(v)   { document.getElementById('grid').style.gridTemplateColumns=`repeat(${v},1fr)`; document.getElementById('val-cols').textContent=v; saveLayoutDebounced(); }
+function applyGap(v)        { R.style.setProperty('--grid-gap',v+'px'); document.getElementById('val-gap').textContent=v+'px'; saveLayoutDebounced(); }
+function applyFont(f,el)    { R.style.setProperty('--ui-font',`'${f}',sans-serif`); document.querySelectorAll('#font-grid .font-option').forEach(o=>o.classList.remove('selected')); el.classList.add('selected'); saveLayoutDebounced(); }
+function applyFontSize(t,v) { R.style.setProperty(t==='task'?'--task-fs':'--project-fs',v+'px'); document.getElementById(t==='task'?'val-task-size':'val-project-size').textContent=v+'px'; saveLayoutDebounced(); }
+function resetCard() { applyCardHeight(390); R.style.setProperty('--task-item-h','auto'); document.getElementById('sl-min-h').value=390; applyRadius(10); document.getElementById('sl-radius').value=10; document.getElementById('sl-task-h').value=38; document.getElementById('val-task-h').textContent='Auto'; saveLayoutDebounced(); }
+function resetGrid() { applyGridCols(5); document.getElementById('sl-cols').value=5; applyGap(30); document.getElementById('sl-gap').value=30; document.getElementById('grid').style.gridTemplateColumns='repeat(5,1fr)'; saveLayoutDebounced(); }
+function resetType() { R.style.setProperty('--ui-font',"'DM Sans',sans-serif"); R.style.setProperty('--task-fs','0.82rem'); R.style.setProperty('--project-fs','0.95rem'); document.getElementById('sl-task-size').value=13; document.getElementById('val-task-size').textContent='13px'; document.getElementById('sl-project-size').value=15; document.getElementById('val-project-size').textContent='15px'; document.querySelectorAll('#font-grid .font-option').forEach((o,i)=>o.classList.toggle('selected',i===0)); saveLayoutDebounced(); }
+
+let _layoutTimer = null;
+function saveLayoutDebounced() {
+  if (!currentProjectId) return;
+  clearTimeout(_layoutTimer);
+  _layoutTimer = setTimeout(() => autoSave(), 400);
+}
 
 // ── PATTERNS ──
 const PAT_STYLES = { none:null, dots:'radial-gradient(circle,#5a607a 1px,transparent 1px)', grid:'linear-gradient(#3a3f55 1px,transparent 1px),linear-gradient(90deg,#3a3f55 1px,transparent 1px)', diagonal:'repeating-linear-gradient(45deg,#3a3f55 0,#3a3f55 1px,transparent 0,transparent 50%)', waves:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='20'%3E%3Cpath d='M0 10 Q20 0 40 10 Q60 20 80 10' fill='none' stroke='%235a607a' stroke-width='1.2'/%3E%3C/svg%3E")`, cross:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M12 4v16M4 12h16' stroke='%235a607a' stroke-width='0.8'/%3E%3C/svg%3E")` };
 const PAT_SIZES  = { dots:'28px 28px', grid:'36px 36px', diagonal:'20px 20px', waves:'80px 20px', cross:'24px 24px' };
 function applyPattern(name,el) {
-  const ov=document.getElementById('pat-overlay');
+  const ov = document.getElementById('pat-overlay');
+  ov.dataset.pattern = name;
   if (name==='none') { ov.style.opacity='0'; ov.style.backgroundImage=''; }
   else { ov.style.backgroundImage=PAT_STYLES[name]; ov.style.backgroundSize=PAT_SIZES[name]||'auto'; ov.style.opacity='0.4'; }
   document.querySelectorAll('#pattern-grid .pattern-card').forEach(c=>c.classList.remove('selected'));
-  el.classList.add('selected');
+  if (el) el.classList.add('selected');
+  saveLayoutDebounced();
 }
 
 // ── THEME ──
